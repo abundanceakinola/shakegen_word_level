@@ -8,7 +8,7 @@ import os
 import gdown
 
 # Load and preprocess data
-def load_and_preprocess_data(file_path, max_words=20000):
+def load_and_preprocess_data(file_path, max_words=29897):  # Update max_words to match your vocabulary size
     with open(file_path, 'r', encoding='utf-8') as file:
         raw_text = file.read()
     tokenizer = Tokenizer(num_words=max_words, oov_token="<OOV>")
@@ -27,11 +27,7 @@ def generate_text(model, start_text, tokenizer, seq_length, length=50, temperatu
         encoded = tokenizer.texts_to_sequences([' '.join(generated_text[-seq_length:])])[0]
         encoded = pad_sequences([encoded], maxlen=seq_length, padding='pre')
         
-        # Convert to one-hot encoding
-        encoded_oh = tf.keras.utils.to_categorical(encoded, num_classes=len(tokenizer.word_index) + 1)
-        encoded_oh = np.expand_dims(encoded_oh, axis=0)  # Add batch dimension
-        
-        preds = model.predict(encoded_oh, verbose=0)[0]
+        preds = model.predict(encoded, verbose=0)[0]
         next_index = sample_with_temperature(preds, temperature)
         next_word = ""
         for word, index in tokenizer.word_index.items():
