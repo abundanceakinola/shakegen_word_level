@@ -2,17 +2,18 @@ import streamlit as st
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import load_model
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing.sequence import pad_sequences
 import os
 import gdown
 
 # Load and preprocess data
-def load_and_preprocess_data(file_path, max_length=97000):
+def load_and_preprocess_data(file_path, max_words=20000):
     with open(file_path, 'r', encoding='utf-8') as file:
-        raw_text = file.read()[:max_length]
-    unique_chars = sorted(set(raw_text))
-    char_to_idx = {char: idx for idx, char in enumerate(unique_chars)}
-    idx_to_char = {idx: char for idx, char in enumerate(unique_chars)}
-    return raw_text, char_to_idx, idx_to_char
+        raw_text = file.read()
+    tokenizer = Tokenizer(num_words=max_words, oov_token="<OOV>")
+    tokenizer.fit_on_texts([raw_text])
+    return raw_text, tokenizer
 
 # Function to download files
 def download_file_from_google_drive(file_id, output_file):
@@ -20,33 +21,20 @@ def download_file_from_google_drive(file_id, output_file):
     gdown.download(url, output_file, quiet=False)
 
 # Generate text function
-def generate_text(model, start_text, char_to_idx, idx_to_char, length=300, temperature=0.5):
-    generated_text = start_text
-    line_length = 40  # Arbitrary line length for stanza structure
-    num_lines = 0     # Track the number of lines generated
-
+def generate_text(model, start_text, tokenizer, seq_length, length=50, temperature=0.5):
+    generated_text = start_text.split()
     for _ in range(length):
-        x_pred = np.zeros((1, len(start_text), len(char_to_idx)))
-        for t, char in enumerate(start_text):
-            x_pred[0, t, char_to_idx[char]] = 1
-        
-        preds = model.predict(x_pred, verbose=0)[0]
+        encoded = tokenizer.texts_to_sequences([' '.join(generated_text[-seq_length:])])[0]
+        encoded = pad_sequences([encoded], maxlen=seq_length, padding='pre')
+        preds = model.predict(encoded, verbose=0)[0]
         next_index = sample_with_temperature(preds, temperature)
-        next_char = idx_to_char[next_index]
-        
-        # Add the next character to the generated text
-        generated_text += next_char
-        start_text = start_text[1:] + next_char
-
-        # Add line breaks based on punctuation or after a certain length
-        if next_char in ['.', '!', '?']:
-            generated_text += "\n"
-            num_lines += 1
-        elif len(start_text) % line_length == 0 and num_lines % 4 == 0:  # Simulate stanza structure
-            generated_text += "\n"
-
-    return generated_text
-
+        next_word = ""
+        for word, index in tokenizer.word_index.items():
+            if index == next_index:
+                next_word = word
+                break
+        generated_text.append(next_word)
+    return ' '.join(generated_text)
 
 # Temperature sampling function
 def sample_with_temperature(preds, temperature=1.0):
@@ -58,10 +46,10 @@ def sample_with_temperature(preds, temperature=1.0):
     return np.argmax(probas)
 
 # Download model and Shakespeare text if not already downloaded
-model_file = "best_lstm_model.keras"
+model_file = "best_word_lstm_model.keras"
 shakespeare_file = "shakespeare.txt"
-model_file_id = "1lRbDGMGP5ETCtfToZ_Ea9-xqtTt1mbX2"  # Replace with your actual file ID
-shakespeare_file_id = "1DIMeFhb40tE03Lay2gOXN40ytz1f3ptP"  # Replace with your actual file ID
+model_file_id = "1KNVCkEOr5yRfwPHZAsiAMSOHo3nRoUbY"  # New model file ID
+shakespeare_file_id = "1DIMeFhb40tE03Lay2gOXN40ytz1f3ptP"  # Unchanged
 
 if not os.path.exists(model_file):
     with st.spinner('Downloading the model from Google Drive...'):
@@ -73,7 +61,7 @@ if not os.path.exists(shakespeare_file):
 
 # Download logo from Google Drive
 logo_file = "ShakeGen_logo_no_bg.png"
-logo_file_id = "1nscQAGhY6STIbV3lyB1oh8RhNxONP7Dw" 
+logo_file_id = "1nscQAGhY6STIbV3lyB1oh8RhNxONP7Dw"  # Unchanged
 
 if not os.path.exists(logo_file):
     with st.spinner('Downloading the logo from Google Drive...'):
@@ -87,7 +75,7 @@ def load_model_from_file():
 model = load_model_from_file()
 
 # Load and preprocess Shakespeare text
-raw_text, char_to_idx, idx_to_char = load_and_preprocess_data(shakespeare_file)
+raw_text, tokenizer = load_and_preprocess_data(shakespeare_file)
 
 # Initialize chat history if not already done
 if "messages" not in st.session_state:
@@ -96,19 +84,19 @@ if "messages" not in st.session_state:
 
 # Streamlit UI title
 st.title('ShakeGen: AI Sonnet Generator')
-st.info('AI-powered Shakespearean Sonnet Generator using Simple LSTM')
+st.info('AI-powered Shakespearean Sonnet Generator using Word-Level LSTM')
 
 # Add logo to sidebar
 logo = "ShakeGen_logo_no_bg.png"
 st.sidebar.image(logo, use_column_width=True)
 
-# Sidebar content remains unchanged
+# Sidebar content
 st.sidebar.header("ShakeGen Information")
 st.sidebar.write("""
-ShakeGen is an AI-powered text generator designed to create poetry in the style of Shakespeare using an LSTM model. 
+ShakeGen is an AI-powered text generator designed to create poetry in the style of Shakespeare using a Word-Level LSTM model. 
 You can experiment with seed text and adjust the temperature slider for creative variability.
 - Temperature: Controls randomness. Lower values (e.g. 0.5) generate more predictable text, while higher values (e.g. 1.5) increase creativity.
-- Example Seed Text: "Shall I compare thee"
+- Example Seed Text: "Shall I compare thee to a summer's day"
 """)
 
 # Add temperature slider
@@ -125,13 +113,12 @@ if prompt := st.chat_input("Enter a seed text"):
     st.chat_message("user").markdown(prompt)
     
     # Generate text based on user input
-    response = generate_text(model, prompt, char_to_idx, idx_to_char, length=300, temperature=temperature)
+    seq_length = 40  # This should match the sequence length used during training
+    response = generate_text(model, prompt, tokenizer, seq_length, length=50, temperature=temperature)
     
     # Display generated text
     with st.chat_message("assistant"):
         st.markdown(response)
-
-
     
     # Add both user and assistant responses to chat history
     st.session_state.messages.append({"role": "user", "content": prompt})
