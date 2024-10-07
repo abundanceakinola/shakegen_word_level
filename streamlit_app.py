@@ -115,7 +115,7 @@ if prompt := st.chat_input("Enter a seed text"):
     
     # Generate text based on user input
     seq_length = 40  # This should match the sequence length used during training
-    response = generate_text(model, prompt, tokenizer, seq_length, length=50, temperature=temperature)
+    response = generate_text(model, prompt, tokenizer, seq_length, length=150, temperature=temperature)
     
     # Display generated text
     with st.chat_message("assistant"):
