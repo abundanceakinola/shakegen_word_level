@@ -26,7 +26,12 @@ def generate_text(model, start_text, tokenizer, seq_length, length=50, temperatu
     for _ in range(length):
         encoded = tokenizer.texts_to_sequences([' '.join(generated_text[-seq_length:])])[0]
         encoded = pad_sequences([encoded], maxlen=seq_length, padding='pre')
-        preds = model.predict(encoded, verbose=0)[0]
+        
+        # Convert to one-hot encoding
+        encoded_oh = tf.keras.utils.to_categorical(encoded, num_classes=len(tokenizer.word_index) + 1)
+        encoded_oh = np.expand_dims(encoded_oh, axis=0)  # Add batch dimension
+        
+        preds = model.predict(encoded_oh, verbose=0)[0]
         next_index = sample_with_temperature(preds, temperature)
         next_word = ""
         for word, index in tokenizer.word_index.items():
