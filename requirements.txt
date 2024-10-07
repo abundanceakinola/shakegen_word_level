@@ -1,0 +1,7 @@
+streamlit
+tensorflow
+numpy
+nltk
+language_tool_python
+scipy
+gdown
