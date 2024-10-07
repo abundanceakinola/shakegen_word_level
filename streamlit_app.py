@@ -8,11 +8,16 @@ import os
 import gdown
 
 # Load and preprocess data
-def load_and_preprocess_data(file_path, max_words=29897):  # Update max_words to match your vocabulary size
+def load_and_preprocess_data(file_path, max_words=29897):
     with open(file_path, 'r', encoding='utf-8') as file:
         raw_text = file.read()
     tokenizer = Tokenizer(num_words=max_words, oov_token="<OOV>")
     tokenizer.fit_on_texts([raw_text])
+    
+    # Add <OOV> token to word_index if it's not already there
+    if '<OOV>' not in tokenizer.word_index:
+        tokenizer.word_index['<OOV>'] = len(tokenizer.word_index) + 1
+    
     return raw_text, tokenizer
 
 # Function to download files
@@ -29,13 +34,35 @@ def generate_text(model, start_text, tokenizer, seq_length, length=50, temperatu
         
         preds = model.predict(encoded, verbose=0)[0]
         next_index = sample_with_temperature(preds, temperature)
-        next_word = ""
-        for word, index in tokenizer.word_index.items():
-            if index == next_index:
-                next_word = word
-                break
+        
+        # Handle OOV
+        if next_index >= len(tokenizer.word_index):
+            next_word = "<OOV>"
+        else:
+            next_word = tokenizer.index_word.get(next_index, "<OOV>")
+        
         generated_text.append(next_word)
-    return ' '.join(generated_text)
+    
+    # Post-process: replace <OOV> with more contextual words
+    return ' '.join(post_process_oov(generated_text))
+
+# New function to post-process OOV tokens
+def post_process_oov(text_list):
+    common_words = ["the", "a", "an", "in", "of", "to", "and", "with", "for", "on"]
+    for i, word in enumerate(text_list):
+        if word == "<OOV>":
+            if i > 0 and i < len(text_list) - 1:
+                prev_word = text_list[i-1].lower()
+                next_word = text_list[i+1].lower()
+                if prev_word in ["the", "a", "an"]:
+                    text_list[i] = "one"
+                elif next_word in ["of", "to", "and"]:
+                    text_list[i] = "thing"
+                else:
+                    text_list[i] = np.random.choice(common_words)
+            else:
+                text_list[i] = np.random.choice(common_words)
+    return text_list
 
 # Temperature sampling function
 def sample_with_temperature(preds, temperature=1.0):
